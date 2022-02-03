@@ -18,14 +18,18 @@ type cmd = {
     synopsis: string option;
     help: string option
 }
+let first_chars str len =
+    String.sub str 0 len
+let string_after str pos =
+    String.sub str pos @@ (String.length str) - pos
 let switch_prefix = "-"
 let is_switch arg =
-    Str.first_chars arg (String.length switch_prefix) = switch_prefix
+    first_chars arg (String.length switch_prefix) = switch_prefix
 let strip_switch sw =
     if is_switch sw then
-        let sw = Str.string_after sw 1 in
+        let sw = string_after sw 1 in
         if is_switch sw then
-            Str.string_after sw 1
+            string_after sw 1
         else
             sw
     else
