@@ -6,32 +6,7 @@ exception Print_help
 exception Print_usage
 exception Not_enough_arguments
 exception Too_many_arguments
-module Store = struct
-    type t =
-        One of string ref
-        | One_opt of string option ref
-        | Maybe of string ref
-        | Maybe_opt of string option ref
-        | Some of string list ref
-        | Any of string list ref
-    let apply_single_store store arg =
-        match store with
-            One r
-            | Maybe r -> r := arg;  true
-            | One_opt r
-            | Maybe_opt r -> r := Some arg; true
-            | Some r
-            | Any r -> r := List.append !r [arg]; false
-end
-module Effect = struct
-    type t =
-        Rest
-        | Print_help
-        | Print_usage
-        | Print_string of string
-        | Set_bool of bool ref
-        | Inc_int of int ref
-end
+exception Argument_looks_like_a_switch
 module Switch = struct
     let first_chars str len =
         String.sub str 0 len
@@ -57,6 +32,28 @@ module Switch = struct
         String.concat "" [prefix; sw]
 end
 module Opt = struct
+    module Effect = struct
+        module Argument = struct
+            module Store = struct
+                type t =
+                    Set_string of string ref
+                    | Set_string_opt of string option ref
+                    | Append_string of string list ref
+            end
+            type t = {
+                name: string;
+                store: Store.t
+            }
+        end
+        type t =
+            Rest
+            | Print_help
+            | Print_usage
+            | Print_string of string
+            | Set_bool of bool ref
+            | Inc_int of int ref
+            | Store of Argument.t list
+    end
     type t = {
         effect: Effect.t;
         switches: string list;
@@ -81,8 +78,21 @@ module Opt = struct
             None -> false
             | _ -> true
     let display prefix opt =
-        String.concat ""
-            ["["; prefix; List.hd opt.switches; "]"]
+        match opt.effect with
+            Rest
+            | Print_help | Print_usage | Print_string _
+            | Set_bool _ | Inc_int _ ->
+                String.concat ""
+                    ["["; prefix; List.hd opt.switches; "]"]
+            | Store ls ->
+                String.concat ""
+                    ["[";
+                        String.concat " "
+                        @@ List.cons
+                            (Switch.prefix prefix @@ List.hd opt.switches)
+                        @@ List.map
+                            (fun (arg: Effect.Argument.t) -> arg.name)
+                            ls; "]"]
     let display_list prefix opts =
         String.concat " "
         @@ List.flatten
@@ -150,9 +160,25 @@ module Opt = struct
                     ]
         else
             ""
-
 end
 module Arg = struct
+    module Store = struct
+        type t =
+            One of string ref
+            | One_opt of string option ref
+            | Maybe of string ref
+            | Maybe_opt of string option ref
+            | Some of string list ref
+            | Any of string list ref
+        let apply_single_store store arg =
+            match store with
+                One r
+                | Maybe r -> r := arg;  true
+                | One_opt r
+                | Maybe_opt r -> r := Some arg; true
+                | Some r
+                | Any r -> r := List.append !r [arg]; false
+    end
     type t = {
         name: string;
         store: Store.t;
@@ -206,7 +232,6 @@ module Arg = struct
                     ]
         else
             ""
-
 end
 type cmd = {
     name: string;
@@ -257,7 +282,7 @@ let rec apply_cmd argv ?(args=[]) cmd =
                     | [], _ :: _ -> raise Too_many_arguments
                     | _ :: _, [] -> raise Not_enough_arguments
                     | cmdarg :: cmdargs_tl, arg :: args ->
-                        if Store.apply_single_store cmdarg.store arg
+                        if Arg.Store.apply_single_store cmdarg.store arg
                             || n_args <= min_n_args then
                                 apply_args args cmdargs_tl
                         else
@@ -287,6 +312,28 @@ let rec apply_cmd argv ?(args=[]) cmd =
                             | Inc_int i ->
                                 i := !i + 1;
                                 apply_cmd argv cmd ~args:args
+                            | Store ls ->
+                                if List.length argv < List.length ls then
+                                    raise @@ Not_enough_arguments
+                                else
+                                    List.iter
+                                        (fun ((s: Opt.Effect.Argument.t), arg) ->
+                                            match s.store with
+                                                Set_string r -> r := arg
+                                                | Set_string_opt r -> r := Some arg
+                                                | Append_string r -> r := List.append !r [arg])
+                                    @@ List.combine
+                                        ls
+                                    @@ List.filteri
+                                        (fun i _ ->
+                                            i < List.length ls)
+                                        argv;
+                                    let argv = 
+                                        List.filteri
+                                            (fun i _ ->
+                                                i >= List.length ls)
+                                            argv in
+                                    apply_cmd argv cmd ~args:args
                         end
                 | _ when Switch.is_switch arg cmd.switch_prefixes ->
                     raise @@ Unknown_switch arg
