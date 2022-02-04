@@ -6,7 +6,6 @@ exception Print_help
 exception Print_usage
 exception Not_enough_arguments
 exception Too_many_arguments
-exception Argument_looks_like_a_switch
 module Switch = struct
     let first_chars str len =
         String.sub str 0 len
