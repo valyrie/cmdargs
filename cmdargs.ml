@@ -80,18 +80,36 @@ module Opt = struct
         match opt.effect with
             Rest
             | Print_help | Print_usage | Print_string _
-            | Set_bool _ | Inc_int _ ->
+            | Set_bool _ ->
                 String.concat ""
                     ["["; prefix; List.hd opt.switches; "]"]
-            | Store ls ->
+            | Inc_int _ ->
                 String.concat ""
-                    ["[";
-                        String.concat " "
-                        @@ List.cons
-                            (Switch.prefix prefix @@ List.hd opt.switches)
-                        @@ List.map
-                            (fun (arg: Effect.Argument.t) -> arg.name)
-                            ls; "]"]
+                    ["["; prefix; List.hd opt.switches; " ...]"]
+            | Store ls ->
+                if List.exists
+                    (fun (arg: Effect.Argument.t) ->
+                        match arg.store with
+                            Append_string _ -> true
+                            | _ -> false)
+                    ls then
+                        String.concat ""
+                            ["[";
+                                String.concat " "
+                                @@ List.cons
+                                    (Switch.prefix prefix @@ List.hd opt.switches)
+                                @@ List.map
+                                    (fun (arg: Effect.Argument.t) -> arg.name)
+                                    ls; "] ..."]
+                else
+                    String.concat ""
+                        ["[";
+                            String.concat " "
+                            @@ List.cons
+                                (Switch.prefix prefix @@ List.hd opt.switches)
+                            @@ List.map
+                                (fun (arg: Effect.Argument.t) -> arg.name)
+                                ls; "]"]
     let display_list prefix opts =
         String.concat " "
         @@ List.flatten
